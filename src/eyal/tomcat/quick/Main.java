@@ -11,10 +11,16 @@ import java.awt.Toolkit;
 import java.awt.TrayIcon;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.KeyEvent;
+import java.awt.event.KeyListener;
+import java.io.File;
 import java.io.IOException;
 import java.net.URL;
 import java.util.prefs.Preferences;
 
+import javax.swing.Icon;
+import javax.swing.ImageIcon;
+import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
@@ -27,9 +33,10 @@ import com.apple.eawt.AppEvent.PreferencesEvent;
 
 public class Main {
 
-	private Preferences myPreferences = null;
+	private static Preferences prefs = Preferences
+			.userNodeForPackage(Main.class);
 
-	private static final String DEFAULT_TOMCAT_LOCATION = "/usr/local/tomcat/bin/";
+	public static final String DEFAULT_TOMCAT_LOCATION = "/usr/local/tomcat/bin/";
 
 	public static void main(String[] args) throws Exception {
 		System.setProperty("apple.laf.useScreenMenuBar", "true");
@@ -86,17 +93,15 @@ public class Main {
 
 		tray.add(icon);
 
-//		com.apple.eawt.Application.getApplication().setPreferencesHandler(
-//				new PreferencesHandler() {
-//
-//					@Override
-//					public void handlePreferences(PreferencesEvent event) {
-//						Preferences userPref = Preferences
-//								.userNodeForPackage(this.getClass());
-//						JFrame prefWindow = new PrefWindow(userPref);
-//						prefWindow.setVisible(true);
-//					}
-//				});
+		com.apple.eawt.Application.getApplication().setPreferencesHandler(
+				new PreferencesHandler() {
+
+					@Override
+					public void handlePreferences(PreferencesEvent event) {
+						JFrame prefWindow = new PrefWindow(prefs);
+						prefWindow.setVisible(true);
+					}
+				});
 
 		Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
 
@@ -108,25 +113,33 @@ public class Main {
 	}
 
 	private static void startup() {
-		try {
-			Runtime.getRuntime().exec(getTomcatLocation() + "startup.sh", null,
-					null);
-		} catch (IOException exception) {
-			exception.printStackTrace();
+		if (locationValid()) {
+			try {
+				Runtime.getRuntime().exec(getTomcatLocation() + "startup.sh", null,
+						null);
+			} catch (IOException exception) {
+				exception.printStackTrace();
+			}
 		}
 	}
 
 	private static void shutdown() {
-		try {
-			Runtime.getRuntime().exec(getTomcatLocation() + "shutdown.sh",
-					null, null);
-		} catch (IOException exception) {
-			exception.printStackTrace();
+		if (locationValid()) {
+			try {
+				Runtime.getRuntime().exec(getTomcatLocation() + "shutdown.sh",
+						null, null);
+			} catch (IOException exception) {
+				exception.printStackTrace();
+			}
 		}
 	}
 
 	public static String getTomcatLocation() {
-		return DEFAULT_TOMCAT_LOCATION;
+		return prefs.get("tomcatLocation", DEFAULT_TOMCAT_LOCATION);
+	}
+	
+	public static boolean locationValid() {
+		return (new File(getTomcatLocation() + "startup.sh").exists());
 	}
 
 }
@@ -137,15 +150,29 @@ public class Main {
  */
 class PrefWindow extends JFrame {
 
+	private static Preferences prefs;
+
+	private static JLabel tomcatLocationLabel = new JLabel("Tomcat Location");
+
+	private static JTextField tomcatLocation = new JTextField(30);
+	
+	private static Icon validIcon = new ImageIcon(PrefWindow.class.getResource("valid.png"));
+	
+	private static Icon invalidIcon = new ImageIcon(PrefWindow.class.getResource("invalid.png"));
+	
+	private static JButton tomcatLocationToDefault = new JButton("Return to default");
+
 	/**
 	 * @throws HeadlessException
 	 */
 	public PrefWindow(Preferences prefs) throws HeadlessException {
+		PrefWindow.prefs = prefs;
+
 		setAlwaysOnTop(true);
 
 		setTitle("Tomcat Quick Preferences");
 
-		setSize(800, 600);
+		setSize(700, 300);
 
 		setResizable(false);
 
@@ -161,29 +188,84 @@ class PrefWindow extends JFrame {
 		setLocation(x, y);
 
 		// Create and populate the panel.
-	    SpringLayout layout = new SpringLayout();
+		SpringLayout layout = new SpringLayout();
 		JPanel contentPane = new JPanel(layout);
-
-		JLabel tomcatLocationLabel = new JLabel("Tomcat Location");
 
 		contentPane.add(tomcatLocationLabel);
 
-		JTextField tomcatLocation = new JTextField(15);
-
 		tomcatLocation.setText(Main.getTomcatLocation());
+
+		tomcatLocation.addKeyListener(new KeyListener() {
+
+			@Override
+			public void keyTyped(KeyEvent e) {
+				save();
+			}
+
+			@Override
+			public void keyReleased(KeyEvent e) {
+				save();
+			}
+
+			@Override
+			public void keyPressed(KeyEvent e) {
+				save();
+			}
+		});
 
 		tomcatLocationLabel.setLabelFor(tomcatLocation);
 		contentPane.add(tomcatLocation);
 		
-
-	    layout.putConstraint(SpringLayout.WEST, tomcatLocationLabel, 10, SpringLayout.WEST, contentPane);
-	    layout.putConstraint(SpringLayout.NORTH, tomcatLocationLabel, 25, SpringLayout.NORTH, contentPane);
-	    layout.putConstraint(SpringLayout.NORTH, tomcatLocation, 25, SpringLayout.NORTH, contentPane);
-	    layout.putConstraint(SpringLayout.WEST, tomcatLocation, 20, SpringLayout.EAST, tomcatLocationLabel);
+		tomcatLocationToDefault.addActionListener(new ActionListener() {
+			
+			@Override
+			public void actionPerformed(ActionEvent event) {
+				tomcatLocation.setText(Main.DEFAULT_TOMCAT_LOCATION);
+				save();
+			}
+		});
 		
-	    contentPane.setOpaque(true);
-		setContentPane(contentPane);
+		contentPane.add(tomcatLocationToDefault);
 
+		layout.putConstraint(SpringLayout.WEST, tomcatLocationLabel, 10,
+				SpringLayout.WEST, contentPane);
+		layout.putConstraint(SpringLayout.NORTH, tomcatLocationLabel, 30,
+				SpringLayout.NORTH, contentPane);
+		layout.putConstraint(SpringLayout.NORTH, tomcatLocation, 25,
+				SpringLayout.NORTH, contentPane);
+		layout.putConstraint(SpringLayout.WEST, tomcatLocation, 20,
+				SpringLayout.EAST, tomcatLocationLabel);
+		layout.putConstraint(SpringLayout.NORTH, tomcatLocationToDefault, 25,
+				SpringLayout.NORTH, contentPane);
+		layout.putConstraint(SpringLayout.WEST, tomcatLocationToDefault, 10,
+				SpringLayout.EAST, tomcatLocation);
+
+		contentPane.setOpaque(true);
+		setContentPane(contentPane);
+		
+		save();
+	}
+
+	public static void save() {
+		prefs.put("tomcatLocation", tomcatLocation.getText());
+		if (tomcatLocation.getText().equals(Main.DEFAULT_TOMCAT_LOCATION)) {
+			tomcatLocationToDefault.setEnabled(false);
+		}
+		else {
+			tomcatLocationToDefault.setEnabled(true);
+		}
+		validateLocation();
+	}
+	
+
+	
+	public static void validateLocation() {
+		if (Main.locationValid()) {
+			tomcatLocationLabel.setIcon(validIcon);
+		}
+		else {
+			tomcatLocationLabel.setIcon(invalidIcon);
+		}
 	}
 
 }
